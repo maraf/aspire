@@ -49,7 +49,7 @@ export const browserDebuggerExtension: ResourceDebuggerExtension = {
         debugConfiguration.type = browser;
         debugConfiguration.request = 'launch';
         debugConfiguration.url = launchConfig.url;
-        debugConfiguration.webRoot = launchConfig.web_root;;
+        debugConfiguration.webRoot = launchConfig.web_root;
 
         debugConfiguration.sourceMaps = true;
         debugConfiguration.resolveSourceMapLocations = ['**', '!**/node_modules/**'];
