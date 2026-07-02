@@ -1,10 +1,14 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 import { AspireResourceExtendedDebugConfiguration, ExecutableLaunchConfiguration, isBrowserLaunchConfiguration, LaunchOptions } from "../../dcp/types";
 import { browserDisplayName, browserLabel, invalidLaunchConfiguration } from "../../loc/strings";
 import { extensionLogOutputChannel } from "../../utils/logging";
 import { ResourceDebuggerExtension } from "../debuggerExtensions";
+
+// Map debug session IDs to their temporary browser profiles for cleanup on termination.
+const sessionProfileDirs = new Map<string, string>();
 
 function getBlazorWasmBrowser(browser: string | undefined): string {
     if (!browser || browser === 'msedge' || browser === 'pwa-msedge') {
@@ -49,11 +53,17 @@ export const browserDebuggerExtension: ResourceDebuggerExtension = {
 
         debugConfiguration.sourceMaps = true;
         debugConfiguration.resolveSourceMapLocations = ['**', '!**/node_modules/**'];
-        // Use a stable user data directory dedicated to Aspire debugging.
-        // This avoids the managed-profile sign-in prompt that appears with a fresh
-        // temp dir (userDataDir: true) on corp machines, and avoids conflicts with
-        // the user's existing browser profile (userDataDir: false).
-        debugConfiguration.userDataDir = path.join(os.tmpdir(), 'aspire-browser-debug');
+        // Create a unique temporary profile directory for this debug session to avoid
+        // concurrent sessions racing on the same browser profile and to ensure profile
+        // data is cleaned up when the session ends.
+        const sessionProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aspire-browser-debug-'));
+        debugConfiguration.userDataDir = sessionProfileDir;
+        
+        // Store the profile directory so we can clean it up when the debug session terminates.
+        const debugSessionId = debugConfiguration.debugSessionId;
+        if (debugSessionId) {
+            sessionProfileDirs.set(debugSessionId, sessionProfileDir);
+        }
 
         // Suppress Edge/Chrome first-run wizards and profile selection prompts
         // that appear on managed machines with enterprise policies.
@@ -114,6 +124,18 @@ function registerBrowserSessionTerminationNotification(debugConfiguration: Aspir
                 disposable.dispose();
                 extensionLogOutputChannel.info(`[Browser] Browser debug session terminated — notifying DCP (runId: ${runId}, debugSessionId: ${debugSessionId})`);
                 aspireSession.sendSessionTerminated(runId, debugSessionId, 0);
+                
+                // Clean up the temporary profile directory for this session.
+                if (debugSessionId && sessionProfileDirs.has(debugSessionId)) {
+                    const profileDir = sessionProfileDirs.get(debugSessionId)!;
+                    sessionProfileDirs.delete(debugSessionId);
+                    try {
+                        fs.rmSync(profileDir, { recursive: true, force: true });
+                        extensionLogOutputChannel.info(`[Browser] Cleaned up browser profile directory: ${profileDir}`);
+                    } catch (error) {
+                        extensionLogOutputChannel.error(`[Browser] Failed to clean up browser profile directory ${profileDir}: ${error}`);
+                    }
+                }
             }
         });
     }
