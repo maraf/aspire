@@ -113,8 +113,11 @@ internal static class BrowserDebuggerHelper
                 await orchestrator.StartResourceAsync(dcpInstanceName, context.CancellationToken).ConfigureAwait(false);
                 debugSessionActive = true;
 
-                // Cancel any previous watcher before starting a new one.
+                // Cancel the previous watcher to signal it to stop, then dispose the old CTS
+                // before creating a new one to avoid leaking CTS registrations and timers
+                // from repeated start/stop cycles.
                 await watcherCts.CancelAsync().ConfigureAwait(false);
+                watcherCts.Dispose();
                 watcherCts = new CancellationTokenSource();
 
                 // Publish a no-op update on the command target to force the dashboard to
