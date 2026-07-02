@@ -115,9 +115,8 @@ function registerBrowserSessionTerminationNotification(debugConfiguration: Aspir
     const aspireSession = launchOptions.debugSession;
     const browserSessionName = debugConfiguration.name;
 
-    extensionLogOutputChannel.info(`[Browser] Registering terminate listener for session name="${browserSessionName}", runId=${runId}, debugSessionId=${debugSessionId}`);
-
     if (runId && debugSessionId) {
+        extensionLogOutputChannel.info(`[Browser] Registering terminate listener for session name="${browserSessionName}", runId=${runId}, debugSessionId=${debugSessionId}`);
         const disposable = vscode.debug.onDidTerminateDebugSession((session) => {
             extensionLogOutputChannel.info(`[Browser] onDidTerminateDebugSession fired: name="${session.name}", configRunId=${session.configuration?.runId}, expected="${browserSessionName}"`);
             if (session.name === browserSessionName) {
