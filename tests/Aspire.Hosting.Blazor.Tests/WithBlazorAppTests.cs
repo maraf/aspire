@@ -186,9 +186,10 @@ public class WithBlazorAppTests(ITestOutputHelper testOutputHelper)
             .WithHttpEndpoint()
             .WithHttpsEndpoint();
 
-        var wasmApp = builder.AddBlazorWasmApp("store", "Store/Store.csproj");
+        var wasmApp = builder.AddBlazorWasmApp("store", "Store/Store.csproj")
+            .WithBlazorDebuggerBrowser("chrome");
 
-        gateway.WithBlazorClientApp(wasmApp, debuggerBrowser: "chrome");
+        gateway.WithBlazorClientApp(wasmApp);
 
         var debuggerResource = Assert.Single(builder.Resources.OfType<BrowserDebuggerResource>());
         Assert.Equal("gateway-store-debugger", debuggerResource.Name);
@@ -293,9 +294,10 @@ public class WithBlazorAppTests(ITestOutputHelper testOutputHelper)
             .WithHttpsEndpoint()
             .WithEndpoint("https", endpoint => endpoint.AllocatedEndpoint = new(endpoint, "localhost", 7443), createIfNotExists: false);
 
-        var wasmApp = builder.AddBlazorWasmApp("store", "Store/Store.csproj");
+        var wasmApp = builder.AddBlazorWasmApp("store", "Store/Store.csproj")
+            .WithBlazorDebuggerBrowser("chrome");
 
-        gateway.WithBlazorClientApp(wasmApp, debuggerBrowser: "chrome");
+        gateway.WithBlazorClientApp(wasmApp);
 
         var debuggerResource = Assert.Single(builder.Resources.OfType<BrowserDebuggerResource>());
         var launchConfiguration = InvokeLaunchConfigurationAnnotator(debuggerResource);

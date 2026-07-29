@@ -161,13 +161,15 @@ public class BlazorHostedExtensionsTests(ITestOutputHelper testOutputHelper)
 
         var host = builder.AddProject<TestProjectMetadata>("blazorapp")
             .WithHttpsEndpoint()
-            .ProxyBlazorService(weatherApi, debuggerBrowser: "chrome")
-            .ProxyBlazorService(catalogApi, debuggerBrowser: "chrome")
-            .ProxyBlazorTelemetry(debuggerBrowser: "chrome")
-            .ProxyBlazorTelemetry(debuggerBrowser: "chrome");
+            .WithBlazorDebuggerBrowser("chrome")
+            .ProxyBlazorService(weatherApi)
+            .ProxyBlazorService(catalogApi)
+            .ProxyBlazorTelemetry()
+            .ProxyBlazorTelemetry();
 
         var debuggerResource = Assert.Single(builder.Resources.OfType<BrowserDebuggerResource>());
         Assert.Equal("blazorapp-wasm-debugger", debuggerResource.Name);
+        Assert.Equal("chrome", debuggerResource.Command);
 
         var parentRelationship = Assert.Single(
             debuggerResource.Annotations.OfType<ResourceRelationshipAnnotation>(),
