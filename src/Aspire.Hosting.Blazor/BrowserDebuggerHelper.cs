@@ -4,6 +4,7 @@
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.JavaScript;
 using Aspire.Hosting.Orchestrator;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 #pragma warning disable ASPIREEXTENSION001 // WithDebugSupport is experimental
@@ -36,6 +37,11 @@ internal static class BrowserDebuggerHelper
         string? relativePath,
         string debuggerBrowser = "msedge")
     {
+        if (!builder.Configuration.GetValue<bool>(KnownConfigNames.WasmDebuggerEnabled, false))
+        {
+            return;
+        }
+
         var debuggerResourceName = relativePath is not null
             ? $"{parentResource.Name}-{commandTarget.Resource.Name}-debugger"
             : $"{parentResource.Name}-wasm-debugger";
