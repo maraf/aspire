@@ -17,9 +17,6 @@ namespace Aspire.Hosting;
 /// </summary>
 internal static class BrowserDebuggerHelper
 {
-    // TODO: Replace with the WebAssembly debugger executable once available.
-    private const string BrowserCommand = "msedge";
-
     /// <summary>
     /// Creates a hidden child ExecutableResource with WithExplicitStart that launches a debug browser
     /// via DCP/IDE when started. Registers "Debug in Browser" and "Stop Browser Debug" commands
@@ -30,12 +27,14 @@ internal static class BrowserDebuggerHelper
     /// <param name="commandTarget">The resource on which to register the debug commands.</param>
     /// <param name="clientProjectPath">Absolute path to the WASM client .csproj.</param>
     /// <param name="relativePath">Optional path prefix appended to the endpoint URL.</param>
+    /// <param name="debuggerBrowser">The browser to use for debugging.</param>
     internal static void AddBrowserDebuggerResource(
         IDistributedApplicationBuilder builder,
         IResourceWithEndpoints parentResource,
         IResourceBuilder<IResource> commandTarget,
         string clientProjectPath,
-        string? relativePath)
+        string? relativePath,
+        string debuggerBrowser = "msedge")
     {
         var debuggerResourceName = relativePath is not null
             ? $"{parentResource.Name}-{commandTarget.Resource.Name}-debugger"
@@ -43,7 +42,7 @@ internal static class BrowserDebuggerHelper
 
         var clientProjectDir = Path.GetDirectoryName(clientProjectPath) ?? clientProjectPath;
 
-        var debuggerResource = new BrowserDebuggerResource(debuggerResourceName, BrowserCommand, clientProjectDir);
+        var debuggerResource = new BrowserDebuggerResource(debuggerResourceName, debuggerBrowser, clientProjectDir);
 
         // Tracks whether a debug browser session is currently active.
         // Toggled by the start/stop command handlers and reset when the resource stops
@@ -89,7 +88,7 @@ internal static class BrowserDebuggerHelper
                         Mode = mode,
                         Url = appUrl,
                         WebRoot = clientProjectPath,
-                        Browser = BrowserCommand
+                        Browser = debuggerBrowser
                     };
                 },
                 "browser");
