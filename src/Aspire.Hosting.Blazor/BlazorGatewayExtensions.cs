@@ -133,13 +133,15 @@ public static class BlazorGatewayExtensions
     /// <param name="apiPrefix">The URL path prefix for API proxy routes. Defaults to <c>"_api"</c>.</param>
     /// <param name="otlpPrefix">The URL path prefix for OTLP proxy routes. Defaults to <c>"_otlp"</c>.</param>
     /// <param name="proxyTelemetry"><see langword="true"/> to expose the OTLP proxy for the client app; otherwise, <see langword="false"/>.</param>
+    /// <param name="debuggerBrowser">The browser to use for debugging. Defaults to <c>"msedge"</c>. Supported values include <c>"msedge"</c> and <c>"chrome"</c>.</param>
     [AspireExport]
     public static IResourceBuilder<ProjectResource> WithBlazorClientApp(
         this IResourceBuilder<ProjectResource> gateway,
         IResourceBuilder<BlazorWasmAppResource> wasmApp,
         string apiPrefix = GatewayConfigurationBuilder.DefaultApiPrefix,
         string otlpPrefix = GatewayConfigurationBuilder.DefaultOtlpPrefix,
-        bool proxyTelemetry = true)
+        bool proxyTelemetry = true,
+        string debuggerBrowser = "msedge")
     {
         var pathPrefix = wasmApp.Resource.Name;
 
@@ -180,7 +182,8 @@ public static class BlazorGatewayExtensions
                 gateway.Resource,
                 wasmApp,
                 wasmApp.Resource.ProjectPath,
-                relativePath: pathPrefix);
+                relativePath: pathPrefix,
+                debuggerBrowser: debuggerBrowser);
         }
 
         return gateway;
