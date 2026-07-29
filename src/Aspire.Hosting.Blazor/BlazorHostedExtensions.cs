@@ -26,11 +26,13 @@ public static class BlazorHostedExtensions
     /// <param name="host">The host resource builder.</param>
     /// <param name="service">The service to proxy.</param>
     /// <param name="apiPrefix">The URL path prefix for API proxy routes. Defaults to <c>"_api"</c>.</param>
+    /// <param name="debuggerBrowser">The browser to use for debugging. Defaults to <c>"msedge"</c>. Supported values include <c>"msedge"</c> and <c>"chrome"</c>.</param>
     [AspireExportIgnore(Reason = "Blazor hosted APIs are not yet stable for ATS export.")]
     public static IResourceBuilder<ProjectResource> ProxyBlazorService(
         this IResourceBuilder<ProjectResource> host,
         IResourceBuilder<IResourceWithServiceDiscovery> service,
-        string apiPrefix = GatewayConfigurationBuilder.DefaultApiPrefix)
+        string apiPrefix = GatewayConfigurationBuilder.DefaultApiPrefix,
+        string debuggerBrowser = "msedge")
     {
         var annotation = GetOrAddHostedClientAnnotation(host.Resource);
         annotation.Services.Add(new HostedClientService(service.Resource.Name, apiPrefix));
@@ -42,7 +44,7 @@ public static class BlazorHostedExtensions
             host.WithReference(service);
         }
 
-        EnsureEnvironmentCallback(host, annotation);
+        EnsureEnvironmentCallback(host, annotation, debuggerBrowser);
 
         return host;
     }
@@ -55,23 +57,26 @@ public static class BlazorHostedExtensions
     /// </summary>
     /// <param name="host">The host resource builder.</param>
     /// <param name="otlpPrefix">The URL path prefix for OTLP proxy routes. Defaults to <c>"_otlp"</c>.</param>
+    /// <param name="debuggerBrowser">The browser to use for debugging. Defaults to <c>"msedge"</c>. Supported values include <c>"msedge"</c> and <c>"chrome"</c>.</param>
     [AspireExportIgnore(Reason = "Blazor hosted APIs are not yet stable for ATS export.")]
     public static IResourceBuilder<ProjectResource> ProxyBlazorTelemetry(
         this IResourceBuilder<ProjectResource> host,
-        string otlpPrefix = GatewayConfigurationBuilder.DefaultOtlpPrefix)
+        string otlpPrefix = GatewayConfigurationBuilder.DefaultOtlpPrefix,
+        string debuggerBrowser = "msedge")
     {
         var annotation = GetOrAddHostedClientAnnotation(host.Resource);
         annotation.ProxyBlazorTelemetry = true;
         annotation.OtlpPrefix = otlpPrefix;
 
-        EnsureEnvironmentCallback(host, annotation);
+        EnsureEnvironmentCallback(host, annotation, debuggerBrowser);
 
         return host;
     }
 
     private static void EnsureEnvironmentCallback(
         IResourceBuilder<ProjectResource> host,
-        HostedClientAnnotation annotation)
+        HostedClientAnnotation annotation,
+        string debuggerBrowser)
     {
         if (annotation.IsInitialized)
         {
@@ -92,7 +97,7 @@ public static class BlazorHostedExtensions
                 // server's output doesn't contain browser-wasm BCL DLLs (e.g. mscorlib.dll).
                 var clientProjectPath = ResolveBlazorWasmClientProjectPath(projectMetadata.ProjectPath)
                     ?? projectMetadata.ProjectPath;
-                AddBrowserDebuggerResource(host, clientProjectPath, relativePath: null);
+                AddBrowserDebuggerResource(host, clientProjectPath, relativePath: null, debuggerBrowser: debuggerBrowser);
             }
         }
 
@@ -203,14 +208,16 @@ public static class BlazorHostedExtensions
     private static void AddBrowserDebuggerResource(
         IResourceBuilder<ProjectResource> host,
         string clientProjectPath,
-        string? relativePath)
+        string? relativePath,
+        string debuggerBrowser)
     {
         BrowserDebuggerHelper.AddBrowserDebuggerResource(
             host.ApplicationBuilder,
             host.Resource,
             host,
             clientProjectPath,
-            relativePath);
+            relativePath,
+            debuggerBrowser: debuggerBrowser);
     }
 }
 
