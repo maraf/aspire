@@ -197,7 +197,7 @@ internal static class BrowserDebuggerHelper
     /// Handles both the normal case (Running → terminal) and the immediate failure case
     /// (Starting → FailedToStart without ever reaching Running).
     /// </summary>
-    private static async Task WatchForDebuggerStopAsync(
+    internal static async Task WatchForDebuggerStopAsync(
         IServiceProvider serviceProvider,
         IResource commandTargetResource,
         IResource debuggerResource,
