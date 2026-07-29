@@ -28,14 +28,14 @@ internal static class BrowserDebuggerHelper
     /// <param name="commandTarget">The resource on which to register the debug commands.</param>
     /// <param name="clientProjectPath">Absolute path to the WASM client .csproj.</param>
     /// <param name="relativePath">Optional path prefix appended to the endpoint URL.</param>
-    /// <param name="debuggerBrowser">The browser to use for debugging.</param>
+    /// <param name="browser">The browser to use for debugging.</param>
     internal static void AddBrowserDebuggerResource(
         IDistributedApplicationBuilder builder,
         IResourceWithEndpoints parentResource,
         IResourceBuilder<IResource> commandTarget,
         string clientProjectPath,
         string? relativePath,
-        string debuggerBrowser = "msedge")
+        string browser = "msedge")
     {
         if (!builder.Configuration.GetValue<bool>(KnownConfigNames.WasmDebuggerEnabled, false))
         {
@@ -48,7 +48,7 @@ internal static class BrowserDebuggerHelper
 
         var clientProjectDir = Path.GetDirectoryName(clientProjectPath) ?? clientProjectPath;
 
-        var debuggerResource = new BrowserDebuggerResource(debuggerResourceName, debuggerBrowser, clientProjectDir);
+        var debuggerResource = new BrowserDebuggerResource(debuggerResourceName, browser, clientProjectDir);
 
         // Tracks whether a debug browser session is currently active.
         // Toggled by the start/stop command handlers and reset when the resource stops
@@ -94,7 +94,7 @@ internal static class BrowserDebuggerHelper
                         Mode = mode,
                         Url = appUrl,
                         WebRoot = clientProjectPath,
-                        Browser = debuggerBrowser
+                        Browser = browser
                     };
                 },
                 "browser");
