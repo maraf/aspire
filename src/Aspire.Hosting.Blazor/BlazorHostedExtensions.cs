@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using Aspire.Hosting.ApplicationModel;
@@ -187,82 +185,45 @@ public static class BlazorHostedExtensions
             return null;
         }
 
-        var startInfo = new ProcessStartInfo
+        var result = BlazorDotNetCliRunner.RunAsync(
+            serverProjectPath,
+            "msbuild",
+            [
+                "-t:ResolveBlazorWebAssemblyProjectReferences",
+                "-getProperty:MSBuildVersion",
+                "-getItem:BlazorWebAssemblyProjectReference",
+                "-nologo"
+            ],
+            machineReadableOutput: true,
+            CancellationToken.None).GetAwaiter().GetResult();
+
+        if (!result.Started || result.ExitCode != 0 || string.IsNullOrWhiteSpace(result.StandardOutput))
         {
-            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } dotnetHostPath
-                ? dotnetHostPath
-                : "dotnet",
-            WorkingDirectory = serverDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.ArgumentList.Add("msbuild");
-        startInfo.ArgumentList.Add(serverProjectPath);
-        startInfo.ArgumentList.Add("-t:ResolveBlazorWebAssemblyProjectReferences");
-        startInfo.ArgumentList.Add("-getProperty:MSBuildVersion");
-        startInfo.ArgumentList.Add("-getItem:BlazorWebAssemblyProjectReference");
-        startInfo.ArgumentList.Add("-nologo");
+            return null;
+        }
 
-        // These probes parse stdout as JSON, so unrelated first-run and workload messages
-        // must not be allowed to corrupt the machine-readable MSBuild output.
-        startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
-        startInfo.Environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "1";
-
-        Process? process;
         try
         {
-            process = Process.Start(startInfo);
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
-        {
-            return null;
-        }
+            using var output = JsonDocument.Parse(result.StandardOutput);
 
-        if (process is null)
-        {
-            return null;
-        }
-
-        using (process)
-        {
-            // Read both streams concurrently to avoid deadlock when a pipe buffer fills.
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            process.WaitForExit();
-
-            var stdout = stdoutTask.GetAwaiter().GetResult();
-            _ = stderrTask.GetAwaiter().GetResult();
-
-            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
+            // MSBuild emits:
+            // { "Items": { "BlazorWebAssemblyProjectReference": [{ "Identity": "/path/Client.csproj" }] } }
+            if (output.RootElement.TryGetProperty("Items", out var items)
+                && items.TryGetProperty("BlazorWebAssemblyProjectReference", out var projectReferences))
             {
-                return null;
-            }
-
-            try
-            {
-                using var output = JsonDocument.Parse(stdout);
-
-                // MSBuild emits:
-                // { "Items": { "BlazorWebAssemblyProjectReference": [{ "Identity": "/path/Client.csproj" }] } }
-                if (output.RootElement.TryGetProperty("Items", out var items)
-                    && items.TryGetProperty("BlazorWebAssemblyProjectReference", out var projectReferences))
+                foreach (var projectReference in projectReferences.EnumerateArray())
                 {
-                    foreach (var projectReference in projectReferences.EnumerateArray())
+                    if (projectReference.TryGetProperty("Identity", out var identity)
+                        && identity.GetString() is { Length: > 0 } projectPath)
                     {
-                        if (projectReference.TryGetProperty("Identity", out var identity)
-                            && identity.GetString() is { Length: > 0 } projectPath)
-                        {
-                            return Path.GetFullPath(projectPath, serverDirectory);
-                        }
+                        return Path.GetFullPath(projectPath, serverDirectory);
                     }
                 }
             }
-            catch (JsonException)
-            {
-                return null;
-            }
+        }
+        catch (JsonException)
+        {
+            return null;
         }
 
         return null;
