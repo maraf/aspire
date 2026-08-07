@@ -177,10 +177,9 @@ public class WithBlazorAppTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public void WithClient_WhenWasmDebuggerEnabled_AddsDebuggerResourceAndCommands()
+    public void WithClient_AddsDebuggerResourceAndCommands()
     {
         using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
-        builder.Configuration[KnownConfigNames.WasmDebuggerEnabled] = bool.TrueString;
 
         var gateway = builder.AddProject<TestProjectMetadata>("gateway")
             .WithHttpEndpoint()
@@ -217,28 +216,9 @@ public class WithBlazorAppTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public void WithClient_WhenWasmDebuggerDisabled_DoesNotAddDebuggerResourceOrCommands()
-    {
-        using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
-
-        var gateway = builder.AddProject<TestProjectMetadata>("gateway")
-            .WithHttpEndpoint()
-            .WithHttpsEndpoint();
-
-        var wasmApp = builder.AddBlazorWasmApp("store", "Store/Store.csproj");
-
-        gateway.WithBlazorClientApp(wasmApp);
-
-        Assert.Empty(builder.Resources.OfType<BrowserDebuggerResource>());
-        Assert.DoesNotContain(wasmApp.Resource.Annotations, annotation => annotation is ResourceCommandAnnotation);
-        Assert.Single(gateway.Resource.Annotations.OfType<GatewayAppsAnnotation>());
-    }
-
-    [Fact]
     public void WithClient_InPublishMode_DoesNotAddDebuggerResourceOrCommands()
     {
         using var builder = TestDistributedApplicationBuilder.Create(DistributedApplicationOperation.Publish);
-        builder.Configuration[KnownConfigNames.WasmDebuggerEnabled] = bool.TrueString;
 
         var gateway = builder.AddProject<TestProjectMetadata>("gateway")
             .WithHttpEndpoint()
@@ -260,7 +240,6 @@ public class WithBlazorAppTests(ITestOutputHelper testOutputHelper)
     public void WithClient_DebuggerCommandsHaveExpectedInitialState(string resourceState, ResourceCommandState expectedDebugState)
     {
         using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
-        builder.Configuration[KnownConfigNames.WasmDebuggerEnabled] = bool.TrueString;
 
         var gateway = builder.AddProject<TestProjectMetadata>("gateway")
             .WithHttpsEndpoint();
@@ -284,10 +263,9 @@ public class WithBlazorAppTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public void WithClient_WhenWasmDebuggerEnabled_CreatesBrowserLaunchConfiguration()
+    public void WithClient_CreatesBrowserLaunchConfiguration()
     {
         using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
-        builder.Configuration[KnownConfigNames.WasmDebuggerEnabled] = bool.TrueString;
 
         var gateway = builder.AddProject<TestProjectMetadata>("gateway")
             .WithHttpEndpoint()

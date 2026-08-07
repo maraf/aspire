@@ -151,15 +151,16 @@ public class BlazorHostedExtensionsTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public void ProxyMethods_WhenWasmDebuggerEnabled_AddOneDebuggerResourceAndCommandPair()
+    public void ProxyMethods_AddOneDebuggerResourceAndCommandPair()
     {
+        using var tempDirectory = new TestTempDirectory();
+        var (serverProjectPath, _) = CreateBlazorHostedProjects(tempDirectory);
         using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
-        builder.Configuration[KnownConfigNames.WasmDebuggerEnabled] = bool.TrueString;
 
         var weatherApi = builder.AddProject<TestProjectMetadata>("weatherapi");
         var catalogApi = builder.AddProject<TestProjectMetadata>("catalogapi");
 
-        var host = builder.AddProject<TestProjectMetadata>("blazorapp")
+        var host = builder.AddProject("blazorapp", serverProjectPath, options => options.ExcludeLaunchProfile = true)
             .WithHttpsEndpoint()
             .WithBlazorDebuggerBrowser("chrome")
             .ProxyBlazorService(weatherApi)
@@ -187,96 +188,13 @@ public class BlazorHostedExtensionsTests(ITestOutputHelper testOutputHelper)
             command => Assert.Equal("stop-browser-debug", command));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData(false)]
-    public async Task ProxyMethods_WhenWasmDebuggerNotEnabled_PreserveProxyBehaviorWithoutDebugger(bool? debuggerEnabled)
-    {
-        using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
-        if (debuggerEnabled.HasValue)
-        {
-            builder.Configuration[KnownConfigNames.WasmDebuggerEnabled] = debuggerEnabled.Value.ToString();
-        }
-        builder.Configuration["ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL"] = "http://localhost:4318";
-
-        var weatherApi = builder.AddProject<TestProjectMetadata>("weatherapi");
-        var host = builder.AddProject<TestProjectMetadata>("blazorapp")
-            .WithHttpsEndpoint()
-            .ProxyBlazorService(weatherApi)
-            .ProxyBlazorTelemetry();
-
-        var annotation = Assert.Single(host.Resource.Annotations.OfType<HostedClientAnnotation>());
-        Assert.Single(annotation.Services);
-        Assert.True(annotation.ProxyBlazorTelemetry);
-        Assert.NotEmpty(host.Resource.Annotations.OfType<EnvironmentCallbackAnnotation>());
-
-        var env = await GetEnvironmentVariables(host.Resource, builder);
-        Assert.Equal("cluster-weatherapi", env["ReverseProxy__Routes__route-weatherapi__ClusterId"]);
-        Assert.Equal("cluster-otlp-dashboard", env["ReverseProxy__Routes__route-otlp__ClusterId"]);
-
-        Assert.Empty(builder.Resources.OfType<BrowserDebuggerResource>());
-        Assert.DoesNotContain(host.Resource.Annotations, annotation => annotation is ResourceCommandAnnotation);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void ProxyService_WhenWasmDebuggerEnabled_UsesResolvedClientProjectAsWebRoot(bool hasWasmClient)
+    [Fact]
+    public void ProxyService_WithWasmClient_UsesResolvedClientProjectAsWebRoot()
     {
         using var tempDirectory = new TestTempDirectory();
-        var serverDirectory = Directory.CreateDirectory(Path.Combine(tempDirectory.Path, "Server"));
-        var clientDirectory = Directory.CreateDirectory(Path.Combine(tempDirectory.Path, "Client"));
-        var serverProjectPath = Path.Combine(serverDirectory.FullName, "Server.csproj");
-        var clientProjectPath = Path.Combine(clientDirectory.FullName, "Client.csproj");
-
-        File.WriteAllText(serverProjectPath, hasWasmClient
-            ? """
-                <Project Sdk="Microsoft.NET.Sdk.Web">
-                  <ItemGroup>
-                    <ProjectReference Include="../Client/Client.csproj" />
-                  </ItemGroup>
-                  <Target Name="ResolveBlazorWebAssemblyProjectReferences">
-                    <MSBuild Projects="@(ProjectReference)"
-                             Targets="GetBlazorWebAssemblyProjectReference"
-                             BuildInParallel="true"
-                             SkipNonexistentTargets="true">
-                      <Output TaskParameter="TargetOutputs" ItemName="_BlazorWebAssemblyProjectReference" />
-                    </MSBuild>
-                    <ItemGroup>
-                      <BlazorWebAssemblyProjectReference Include="@(_BlazorWebAssemblyProjectReference)" />
-                    </ItemGroup>
-                  </Target>
-                </Project>
-                """
-            : """
-                <Project Sdk="Microsoft.NET.Sdk.Web">
-                  <Target Name="ResolveBlazorWebAssemblyProjectReferences">
-                    <MSBuild Projects="@(ProjectReference)"
-                             Targets="GetBlazorWebAssemblyProjectReference"
-                             BuildInParallel="true"
-                             SkipNonexistentTargets="true">
-                      <Output TaskParameter="TargetOutputs" ItemName="_BlazorWebAssemblyProjectReference" />
-                    </MSBuild>
-                    <ItemGroup>
-                      <BlazorWebAssemblyProjectReference Include="@(_BlazorWebAssemblyProjectReference)" />
-                    </ItemGroup>
-                  </Target>
-                </Project>
-                """);
-        File.WriteAllText(clientProjectPath, """
-            <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
-              <Target Name="GetBlazorWebAssemblyProjectReference"
-                      Returns="@(_BlazorWebAssemblyProjectReference)">
-                <ItemGroup>
-                  <_BlazorWebAssemblyProjectReference Include="$(MSBuildProjectFullPath)"
-                                                      Condition="'$(UsingMicrosoftNETSdkBlazorWebAssembly)' == 'true'" />
-                </ItemGroup>
-              </Target>
-            </Project>
-            """);
+        var (serverProjectPath, clientProjectPath) = CreateBlazorHostedProjects(tempDirectory);
 
         using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
-        builder.Configuration[KnownConfigNames.WasmDebuggerEnabled] = bool.TrueString;
 
         var weatherApi = builder.AddProject<TestProjectMetadata>("weatherapi");
         builder.AddProject("blazorapp", serverProjectPath, options => options.ExcludeLaunchProfile = true)
@@ -287,7 +205,7 @@ public class BlazorHostedExtensionsTests(ITestOutputHelper testOutputHelper)
         var debuggerResource = Assert.Single(builder.Resources.OfType<BrowserDebuggerResource>());
         var launchConfiguration = InvokeLaunchConfigurationAnnotator(debuggerResource);
 
-        Assert.Equal(hasWasmClient ? clientProjectPath : serverProjectPath, launchConfiguration.WebRoot);
+        Assert.Equal(clientProjectPath, launchConfiguration.WebRoot);
     }
 
     [Fact]
@@ -549,6 +467,46 @@ public class BlazorHostedExtensionsTests(ITestOutputHelper testOutputHelper)
             Executable.LaunchConfigurationsAnnotation,
             out var launchConfigurations));
         return Assert.Single(launchConfigurations);
+    }
+
+    private static (string ServerProjectPath, string ClientProjectPath) CreateBlazorHostedProjects(TestTempDirectory tempDirectory)
+    {
+        var serverDirectory = Directory.CreateDirectory(Path.Combine(tempDirectory.Path, "Server"));
+        var clientDirectory = Directory.CreateDirectory(Path.Combine(tempDirectory.Path, "Client"));
+        var serverProjectPath = Path.Combine(serverDirectory.FullName, "Server.csproj");
+        var clientProjectPath = Path.Combine(clientDirectory.FullName, "Client.csproj");
+
+        File.WriteAllText(serverProjectPath, """
+            <Project Sdk="Microsoft.NET.Sdk.Web">
+              <ItemGroup>
+                <ProjectReference Include="../Client/Client.csproj" />
+              </ItemGroup>
+              <Target Name="ResolveBlazorWebAssemblyProjectReferences">
+                <MSBuild Projects="@(ProjectReference)"
+                         Targets="GetBlazorWebAssemblyProjectReference"
+                         BuildInParallel="true"
+                         SkipNonexistentTargets="true">
+                  <Output TaskParameter="TargetOutputs" ItemName="_BlazorWebAssemblyProjectReference" />
+                </MSBuild>
+                <ItemGroup>
+                  <BlazorWebAssemblyProjectReference Include="@(_BlazorWebAssemblyProjectReference)" />
+                </ItemGroup>
+              </Target>
+            </Project>
+            """);
+        File.WriteAllText(clientProjectPath, """
+            <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+              <Target Name="GetBlazorWebAssemblyProjectReference"
+                      Returns="@(_BlazorWebAssemblyProjectReference)">
+                <ItemGroup>
+                  <_BlazorWebAssemblyProjectReference Include="$(MSBuildProjectFullPath)"
+                                                      Condition="'$(UsingMicrosoftNETSdkBlazorWebAssembly)' == 'true'" />
+                </ItemGroup>
+              </Target>
+            </Project>
+            """);
+
+        return (serverProjectPath, clientProjectPath);
     }
 
     private sealed class TestProjectMetadata : IProjectMetadata
