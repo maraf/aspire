@@ -15,4 +15,21 @@
     <PackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" />
   </ItemGroup>
 
+  <!-- These targets prototype the contract that will eventually be provided by the SDKs.
+       The server asks every evaluated ProjectReference whether it is a Blazor WebAssembly
+       project and collects the project paths returned by references that recognize the target. -->
+  <Target Name="ResolveBlazorWebAssemblyProjectReferences">
+    <MSBuild
+        Projects="@(ProjectReference)"
+        Targets="GetBlazorWebAssemblyProjectReference"
+        BuildInParallel="true"
+        SkipNonexistentTargets="true">
+      <Output TaskParameter="TargetOutputs" ItemName="_BlazorWebAssemblyProjectReference" />
+    </MSBuild>
+
+    <ItemGroup>
+      <BlazorWebAssemblyProjectReference Include="@(_BlazorWebAssemblyProjectReference)" />
+    </ItemGroup>
+  </Target>
+
 </Project>

@@ -1,8 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
+using System.ComponentModel;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Xml.Linq;
+using System.Text.Json;
 using Aspire.Hosting.ApplicationModel;
 using Microsoft.Extensions.Logging;
 
@@ -108,9 +110,11 @@ public static class BlazorHostedExtensions
                 // The debug bridge (monovsdbg_wasm) needs the CLIENT project path to resolve
                 // WASM BCL assemblies on disk. Passing the server's path fails because the
                 // server's output doesn't contain browser-wasm BCL DLLs (e.g. mscorlib.dll).
-                var clientProjectPath = ResolveBlazorWasmClientProjectPath(projectMetadata.ProjectPath)
-                    ?? projectMetadata.ProjectPath;
-                AddBrowserDebuggerResource(host, clientProjectPath, relativePath: null, browser: annotation.DebuggerBrowser);
+                var clientProjectPath = ResolveBlazorWasmClientProjectPath(projectMetadata.ProjectPath);
+                if (clientProjectPath is not null)
+                {
+                    AddBrowserDebuggerResource(host, clientProjectPath, relativePath: null, browser: annotation.DebuggerBrowser);
+                }
             }
         }
 
@@ -172,47 +176,93 @@ public static class BlazorHostedExtensions
 
     /// <summary>
     /// Resolves the Blazor WebAssembly client project path from the server project's references.
-    /// The server's .csproj contains a ProjectReference to the client which uses
-    /// Microsoft.NET.Sdk.BlazorWebAssembly. We find that reference so the debug bridge
-    /// can locate WASM BCL assemblies in the client's output directory.
+    /// The server project target asks each evaluated project reference whether it is a
+    /// Blazor WebAssembly project and returns the matching project path.
     /// </summary>
     private static string? ResolveBlazorWasmClientProjectPath(string serverProjectPath)
     {
+        var serverDirectory = Path.GetDirectoryName(serverProjectPath);
+        if (serverDirectory is null)
+        {
+            return null;
+        }
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } dotnetHostPath
+                ? dotnetHostPath
+                : "dotnet",
+            WorkingDirectory = serverDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("msbuild");
+        startInfo.ArgumentList.Add(serverProjectPath);
+        startInfo.ArgumentList.Add("-t:ResolveBlazorWebAssemblyProjectReferences");
+        startInfo.ArgumentList.Add("-getProperty:MSBuildVersion");
+        startInfo.ArgumentList.Add("-getItem:BlazorWebAssemblyProjectReference");
+        startInfo.ArgumentList.Add("-nologo");
+
+        // These probes parse stdout as JSON, so unrelated first-run and workload messages
+        // must not be allowed to corrupt the machine-readable MSBuild output.
+        startInfo.Environment["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1";
+        startInfo.Environment["DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE"] = "1";
+
+        Process? process;
         try
         {
-            var serverDir = Path.GetDirectoryName(serverProjectPath);
-            if (serverDir is null)
+            process = Process.Start(startInfo);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+        {
+            return null;
+        }
+
+        if (process is null)
+        {
+            return null;
+        }
+
+        using (process)
+        {
+            // Read both streams concurrently to avoid deadlock when a pipe buffer fills.
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            process.WaitForExit();
+
+            var stdout = stdoutTask.GetAwaiter().GetResult();
+            _ = stderrTask.GetAwaiter().GetResult();
+
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
             {
                 return null;
             }
 
-            var doc = XDocument.Load(serverProjectPath);
-            var ns = doc.Root?.Name.Namespace ?? XNamespace.None;
-
-            var projectRefs = doc.Descendants(ns + "ProjectReference")
-                .Select(e => e.Attribute("Include")?.Value)
-                .Where(v => v is not null);
-
-            foreach (var relPath in projectRefs)
+            try
             {
-                var fullPath = Path.GetFullPath(Path.Combine(serverDir, relPath!));
-                if (!File.Exists(fullPath))
-                {
-                    continue;
-                }
+                using var output = JsonDocument.Parse(stdout);
 
-                // Check if this project uses the BlazorWebAssembly SDK
-                var refDoc = XDocument.Load(fullPath);
-                var sdk = refDoc.Root?.Attribute("Sdk")?.Value;
-                if (string.Equals(sdk, "Microsoft.NET.Sdk.BlazorWebAssembly", StringComparison.OrdinalIgnoreCase))
+                // MSBuild emits:
+                // { "Items": { "BlazorWebAssemblyProjectReference": [{ "Identity": "/path/Client.csproj" }] } }
+                if (output.RootElement.TryGetProperty("Items", out var items)
+                    && items.TryGetProperty("BlazorWebAssemblyProjectReference", out var projectReferences))
                 {
-                    return fullPath;
+                    foreach (var projectReference in projectReferences.EnumerateArray())
+                    {
+                        if (projectReference.TryGetProperty("Identity", out var identity)
+                            && identity.GetString() is { Length: > 0 } projectPath)
+                        {
+                            return Path.GetFullPath(projectPath, serverDirectory);
+                        }
+                    }
                 }
             }
-        }
-        catch
-        {
-            // If we can't resolve the client project, fall back to the server path.
+            catch (JsonException)
+            {
+                return null;
+            }
         }
 
         return null;

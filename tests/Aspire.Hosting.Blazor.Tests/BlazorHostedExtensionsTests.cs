@@ -235,13 +235,44 @@ public class BlazorHostedExtensionsTests(ITestOutputHelper testOutputHelper)
                   <ItemGroup>
                     <ProjectReference Include="../Client/Client.csproj" />
                   </ItemGroup>
+                  <Target Name="ResolveBlazorWebAssemblyProjectReferences">
+                    <MSBuild Projects="@(ProjectReference)"
+                             Targets="GetBlazorWebAssemblyProjectReference"
+                             BuildInParallel="true"
+                             SkipNonexistentTargets="true">
+                      <Output TaskParameter="TargetOutputs" ItemName="_BlazorWebAssemblyProjectReference" />
+                    </MSBuild>
+                    <ItemGroup>
+                      <BlazorWebAssemblyProjectReference Include="@(_BlazorWebAssemblyProjectReference)" />
+                    </ItemGroup>
+                  </Target>
                 </Project>
                 """
             : """
-                <Project Sdk="Microsoft.NET.Sdk.Web" />
+                <Project Sdk="Microsoft.NET.Sdk.Web">
+                  <Target Name="ResolveBlazorWebAssemblyProjectReferences">
+                    <MSBuild Projects="@(ProjectReference)"
+                             Targets="GetBlazorWebAssemblyProjectReference"
+                             BuildInParallel="true"
+                             SkipNonexistentTargets="true">
+                      <Output TaskParameter="TargetOutputs" ItemName="_BlazorWebAssemblyProjectReference" />
+                    </MSBuild>
+                    <ItemGroup>
+                      <BlazorWebAssemblyProjectReference Include="@(_BlazorWebAssemblyProjectReference)" />
+                    </ItemGroup>
+                  </Target>
+                </Project>
                 """);
         File.WriteAllText(clientProjectPath, """
-            <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly" />
+            <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+              <Target Name="GetBlazorWebAssemblyProjectReference"
+                      Returns="@(_BlazorWebAssemblyProjectReference)">
+                <ItemGroup>
+                  <_BlazorWebAssemblyProjectReference Include="$(MSBuildProjectFullPath)"
+                                                      Condition="'$(UsingMicrosoftNETSdkBlazorWebAssembly)' == 'true'" />
+                </ItemGroup>
+              </Target>
+            </Project>
             """);
 
         using var builder = TestDistributedApplicationBuilder.Create(testOutputHelper);
