@@ -197,7 +197,11 @@ public static class BlazorHostedExtensions
                     // discovery gracefully when it isn't supported: https://github.com/microsoft/aspire/issues/20417
                     var versionProvider = beforeStartEvent.Services.GetRequiredService<IDotnetSdkVersionProvider>();
                     var serverDirectory = Path.GetDirectoryName(projectMetadata.ProjectPath);
-                    var sdkVersion = await versionProvider.TryGetVersionAsync(serverDirectory, cancellationToken).ConfigureAwait(false);
+                    var dotnetExecutablePath = BlazorDotNetCliRunner.GetExecutablePath();
+                    var sdkVersion = await versionProvider.TryGetVersionAsync(
+                        serverDirectory,
+                        dotnetExecutablePath,
+                        cancellationToken).ConfigureAwait(false);
 
                     if (!DotnetSdkUtils.SupportsWebAssemblyProjectReferenceResolution(sdkVersion))
                     {
@@ -210,6 +214,7 @@ public static class BlazorHostedExtensions
 
                     annotation.DebuggerClientProjectPath = await ResolveBlazorWasmClientProjectPathAsync(
                         projectMetadata.ProjectPath,
+                        dotnetExecutablePath,
                         logger,
                         cancellationToken).ConfigureAwait(false);
                 });
@@ -279,6 +284,7 @@ public static class BlazorHostedExtensions
     /// </summary>
     private static async Task<string?> ResolveBlazorWasmClientProjectPathAsync(
         string serverProjectPath,
+        string dotnetExecutablePath,
         ILogger logger,
         CancellationToken cancellationToken)
     {
@@ -294,6 +300,7 @@ public static class BlazorHostedExtensions
         // The target returns each evaluated WASM ProjectReference. An empty collection is valid
         // and keeps the browser debugging command hidden.
         var result = await BlazorDotNetCliRunner.RunAsync(
+            dotnetExecutablePath,
             serverProjectPath,
             "msbuild",
             [
